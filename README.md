@@ -1,99 +1,136 @@
-# SQL Data Warehouse Project
+# SQL Data Warehouse
 
-## Overview
-A modern data warehouse built in SQL Server using Medallion architecture
-to consolidate two source systems into a single trusted analytical layer.
-The project covers end-to-end data engineering — from raw data ingestion
-to a business-ready star schema model ready for reporting and analytics.
+A SQL Server portfolio project that integrates CRM and ERP CSV extracts into a structured analytical model using Bronze, Silver, and Gold layers.
+
+The project demonstrates SQL-based data loading, data cleaning, dimensional modeling, validation, and documentation. It was implemented by following a guided YouTube tutorial.
+
+## Project Scope
+
+This repository covers the data warehouse implementation, from source ingestion through the Gold reporting layer.
+
+Exploratory data analysis and advanced analytics are maintained in a separate companion repository. Together, the two repositories form the **End-to-End Data Warehouse and Business Analytics** project.
 
 ## Architecture
-This project follows the Medallion architecture with three layers.
 
-Bronze Layer — Raw data landing zone. Data is loaded exactly as-is from
-two CSV source systems using bulk insert stored procedures. No transformations
-are applied. This layer exists purely for traceability and debugging.
+| Layer | Purpose | Implementation |
+|---|---|---|
+| Bronze | Preserve source records for inspection and traceability | Raw tables populated from CSV files using bulk loading |
+| Silver | Clean and standardize source data | Transformed tables populated through SQL stored procedures |
+| Gold | Organize data for analysis and reporting | Customer and product dimension views connected to a sales fact view |
 
-Silver Layer — Transformation layer. All data quality issues are identified
-and resolved here. Clean standardized data is prepared for the final layer.
+Bronze and Silver use full refreshes through a truncate-and-insert approach. Gold views query the underlying Silver tables and reflect their latest loaded state; they do not independently refresh the source data.
 
-Gold Layer — Business layer. A star schema is built using views for direct
-consumption by reporting tools and analysts.
+## Source Data
 
-## Data Sources
-Two flat CSV source systems were used to simulate real-world disconnected
-business systems.
+The project uses six CSV files representing two business systems:
 
-Source 1 — CRM data containing customer information across three tables.
-Source 2 — ERP data containing product, category, and sales information
-across three tables.
+- **CRM:** customer information, product information, and sales transactions.
+- **ERP:** additional customer demographics, customer locations, and product categories.
 
-Total — six source tables consolidated into one analytical model.
+These are file-based extracts used for the portfolio project, rather than live connections to CRM or ERP applications.
 
-## Data Quality Issues Resolved in Silver Layer
-- Duplicate customer records removed using ROW_NUMBER() window function
-  partitioned by customer ID ordered by create date
-- Coded abbreviations like M and F standardized to Male and Female
-  using CASE WHEN with UPPER and TRIM
-- Integer date columns converted to proper DATE type after handling
-  zeros and invalid values
-- Null and negative sales amounts recalculated from quantity times price
-  using ABS function
-- Broken product start and end dates reconstructed using LEAD window
-  function to eliminate overlapping date ranges
-- Mismatched customer IDs between CRM and ERP resolved by stripping
-  invalid prefixes using SUBSTRING
-- Null country and gender values replaced with Not Available default label
+## Data Cleaning and Validation
 
-## Data Model — Gold Layer Star Schema
-The Gold layer implements a star schema with the following objects.
+Silver-layer transformations include:
 
-dim_customers — Dimension table integrating customer data from both CRM
-and ERP sources with demographics and geography.
+- Removing duplicate customer records using `ROW_NUMBER()` and retaining the most recent record according to the source creation date.
+- Standardizing coded values, capitalization, and whitespace using `CASE`, `UPPER`, and `TRIM`.
+- Converting integer date fields into SQL `DATE` values and handling invalid dates.
+- Recalculating missing or inconsistent sales amounts using quantity and price under the project's defined transformation rules.
+- Reconstructing product end dates using `LEAD()` to address inconsistent date ranges.
+- Standardizing customer identifiers so records can be joined across sources.
+- Assigning default labels to missing or unrecognized categorical values.
 
-dim_products — Dimension table with current product information joined
-with category data from ERP.
+Validation queries check for duplicate keys, missing values, unwanted whitespace, invalid date relationships, inconsistent sales calculations, and unmatched relationships.
 
-fact_sales — Fact table containing sales transactions connected to both
-dimensions via surrogate keys.
+These checks validate the data against the project's rules. They do not independently establish that every source value is correct.
 
-All Gold objects are SQL views ensuring always-fresh data with no
-separate load process required.
+## Gold Data Model
 
-## ETL Pipeline
-- Stored procedures built for Bronze and Silver layer loads
-- TRY-CATCH error handling captures error message, number, and state
-- Per-table load duration logged using GETDATE and DATEDIFF
-- Truncate and insert pattern used for full load refresh
-- Row count validation checks after each load
+The analytical model contains three SQL views:
+
+| View | Description |
+|---|---|
+| `gold.dim_customers` | Combines customer attributes, demographics, and geographic information from CRM and ERP extracts |
+| `gold.dim_products` | Combines current product information with category and subcategory attributes |
+| `gold.fact_sales` | Contains sales transactions linked to customer and product dimensions through surrogate keys |
+
+The model supports customer analysis, product comparisons, sales summaries, and downstream reporting.
+
+## Loading and Error Handling
+
+- Separate stored procedures load the Bronze and Silver layers.
+- Full refreshes replace the existing contents of the destination tables.
+- `TRY...CATCH` blocks report error details during execution.
+- Execution messages include table-level and overall load durations.
+- SQL quality-check scripts support validation of the cleaned and analytical layers.
+
+The procedures provide a repeatable loading workflow. Scheduled orchestration and incremental loading are outside this implementation's scope.
+
+## Dataset Scale and Reconciliation
+
+The customer and product reporting outputs analyzed in the companion analytics project both total **$29,351,258 in sales**.
+
+The customer report contains **18,482 customers**. The product report contains **130 products with recorded sales and non-null order dates**; this is distinct from the full product dimension.
+
+These figures describe the dataset analyzed, not revenue generated by this project.
 
 ## Repository Structure
-datasets — source CSV files for CRM and ERP systems
-scripts — SQL scripts organized by layer
-  scripts/bronze — DDL and stored procedure for Bronze load
-  scripts/silver — DDL and stored procedure for Silver load
-  scripts/gold — DDL views for Gold layer
-tests — data quality check scripts for Silver and Gold layers
-docs — architecture diagrams and data flow documentation
 
-## Key Results
-- 29 million in total revenue consolidated into one source
-- 18,000 customers across 6 countries
-- 295 products across 4 categories
-- Full data lineage from source CSV to Gold reporting layer
+- `datasets/` — CRM and ERP source CSV files
+- `scripts/` — Database initialization and SQL implementation
+- `scripts/bronze/` — Bronze table definitions and load procedure
+- `scripts/silver/` — Silver table definitions and transformation procedure
+- `scripts/gold/` — Gold dimension and fact view definitions
+- `tests/` — Data quality and relationship checks
+- `docs/` — Architecture, data flow, and model documentation
 
-## Tools Used
+## Tools
+
 - SQL Server Express
 - SQL Server Management Studio
-- Draw.io for architecture and data flow diagrams
-- GitHub for version control
+- T-SQL
+- diagrams.net / draw.io
+- GitHub
 
 ## How to Run
-1. Execute scripts/init_database.sql to create the database and schemas
-2. Execute scripts/bronze/ddl_bronze.sql to create Bronze tables
-3. Execute scripts/bronze/proc_load_bronze.sql to create Bronze procedure
-4. Run EXEC bronze.load_bronze to load Bronze layer
-5. Execute scripts/silver/ddl_silver.sql to create Silver tables
-6. Execute scripts/silver/proc_load_silver.sql to create Silver procedure
-7. Run EXEC silver.load_silver to load Silver layer
-8. Execute scripts/gold/ddl_gold.sql to create Gold views
-9. Run quality checks from tests folder to validate each layer
+
+Use a dedicated practice database. Review the initialization script before execution, because database-reset commands may remove existing objects or data.
+
+1. Execute `scripts/init_database.sql` to initialize the database and schemas.
+2. Execute `scripts/bronze/ddl_bronze.sql` to create the Bronze tables.
+3. Update the CSV file paths in the Bronze load script to match your local environment.
+4. Execute `scripts/bronze/proc_load_bronze.sql` to create the Bronze load procedure.
+5. Load the source data:
+
+   ```sql
+   EXEC bronze.load_bronze;
+   ```
+
+6. Execute `scripts/silver/ddl_silver.sql` to create the Silver tables.
+7. Execute `scripts/silver/proc_load_silver.sql` to create the Silver load procedure.
+8. Run the transformations:
+
+   ```sql
+   EXEC silver.load_silver;
+   ```
+
+9. Execute `scripts/gold/ddl_gold.sql` to create the analytical views.
+10. Run the applicable validation scripts in `tests/` and investigate unexpected results.
+
+## Learning Outcomes
+
+Through this implementation, I practiced:
+
+- Integrating multiple source extracts with SQL.
+- Separating raw, cleaned, and analytical data.
+- Applying and documenting transformation rules.
+- Building a dimensional model for reporting.
+- Writing reusable load procedures with error handling.
+- Validating keys, calculations, and relationships.
+
+## Continue to EDA and Advanced Analytics
+
+This project continues in a companion repository, where I use the Gold-layer datasets for exploratory data analysis and advanced SQL analytics, including sales trends, customer segmentation, product performance, and KPI reporting.
+
+**[View the EDA and Advanced Analytics Repository](https://github.com/Likhita0000/Exploratory-data-analysis-retail-project1)**
